@@ -1,7 +1,7 @@
 # SURVEILLANCE-SYSTEM-
 
-ADD INDEX.HTML FILE under templates folder 
-ADD Javascript FILE under static folder 
+1. ADD INDEX.HTML FILE under templates folder 
+2. ADD Javascript FILE under static folder 
 
 To run:
 1) pip install flask
