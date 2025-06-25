@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Animated Radar Simulation</title>
+    <style>
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #cfcfcf;
+        background-size: cover;
+        background-repeat: no-repeat;
+        background-position: center;
+        font-family: Arial, sans-serif;
+        text-align: center;
+      }
+      h1 {
+        font-size: 3em;
+        letter-spacing: 5px;
+        margin-bottom: 20px;
+      }
+      #main > canvas {
+        margin-top: 20px;
+        border-radius: 50%;
+      }
+      input[type="number"] {
+        font-size: 1.5em;
+        padding: 10px;
+        width: 100px;
+        border-radius: 8px;
+      }
+      button {
+        font-size: 1.5em;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .flex {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+      }
+      .flex-col {
+        flex-direction: column;
+      }
+      #main {
+        display: flex;
+        gap: 2vw;
+      }
+      #right {
+        display: flex;
+        flex-direction: column;
+      }
+      #btn-frame {
+        margin: 40px;
+        border-top: 1px solid black;
+        padding-top: 20px;
+      }
+      #tables {
+        margin-top: 40px;
+        display: flex;
+        flex-direction: column;
+      }
+      #threatTableContainer {
+        width: 40vw;
+      }
+      #keypointTableContainer {
+        width: 40vw;
+      }
+      table {
+        border-collapse: collapse;
+        width: 80%;
+        margin: 0 auto;
+      }
+      th,
+      td {
+        border: 1px solid black;
+        padding: 8px;
+        text-align: center;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+    </style>
+  </head>
+  <body>
+    <u><h1>RADAR DEFENSE CONTROL</h1></u>
+    <div id="main">
+      <canvas id="radarCanvas" width="600" height="600"></canvas>
+
+      <div id="right">
+        <h3>Add Threat</h3>
+        <form id="threatForm" class="flex flex-col">
+          <div class="flex">
+            X: <input type="number" id="threatX" required /> Y:
+            <input type="number" id="threatY" required />
+          </div>
+          <div class="flex">
+            VX: <input type="number" id="threatVX" required /> VY:
+            <input type="number" id="threatVY" required />
+          </div>
+          <div class="flex">
+            <button type="submit">Add Threat</button>
+            <button onclick="addRandom()">Add Random</button>
+          </div>
+        </form>
+
+        <h3>Add Key Point</h3>
+        <form id="keypointForm" class="flex flex-col">
+          <div class="flex">
+            X: <input type="number" id="kpX" required /> Y:
+            <input type="number" id="kpY" required />
+          </div>
+          <button type="submit">Add Key Point</button>
+        </form>
+
+        <div id="btn-frame">
+          <button onclick="killBestThreat()">Kill Optimal Threat</button>
+        </div>
+      </div>
+      <div id="tables">
+        <div id="keypointTableContainer">
+          <h3>Key Points List</h3>
+          <table id="keypointTable" border="1">
+            <thead>
+              <tr>
+                <th>Key Point ID</th>
+                <th>Position</th>
+                <th>Name</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Rows will be dynamically added here -->
+            </tbody>
+          </table>
+        </div>
+        <div id="threatTableContainer">
+          <h3>Threats List</h3>
+          <table id="threatTable" border="1">
+            <thead>
+              <tr>
+                <th>Threat ID</th>
+                <th>Position</th>
+                <th>Velocity</th>
+                <th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Rows will be dynamically added here -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="scoreGraphContainer">
+      <h3>Threat Scores Over Time</h3>
+      <canvas id="scoreGraph" width="800" height="400"></canvas>
+    </div>
+    <script src="{{ url_for('static', filename='chart.js') }}"></script>
+    <script>
+      const canvas = document.getElementById("radarCanvas");
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      let threats = [];
+      let keyPoints = [[0, 0]];
+      let bestTargetIndex = -1;
+      let targetScores = [];
+      const militaryPositions = [
+        "Alpha Base",
+        "Bravo Outpost",
+        "Charlie Station",
+        "Delta Command",
+        "Echo Point",
+      ];
+
+      function drawRadarSweep(angle) {
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, 300, angle, angle + 0.2);
+        ctx.fillStyle = "rgba(0,255,0,0.2)";
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawConcentricCircles() {
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.lineWidth = 1;
+        [50, 100, 150, 200, 250, 300].forEach((radius) => {
+          ctx.beginPath();
+          ctx.strokeStyle = radius === 100 ? "red" : "#66ff66";
+          ctx.arc(0, 0, radius, 0, Math.PI * 2);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      function drawRadialLines() {
+        ctx.save();
+        ctx.translate(width / 2, height / 2);
+        ctx.strokeStyle = "#66ff66";
+        ctx.setLineDash([5, 5]);
+        for (let i = 0; i < 360; i += 30) {
+          const rad = (i * Math.PI) / 180;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(300 * Math.cos(rad), 300 * Math.sin(rad));
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
+
+      function drawScene(angle) {
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, width, height);
+        drawRadarSweep(angle);
+        drawConcentricCircles();
+        drawRadialLines();
+
+        keyPoints.forEach(([x, y], index) => {
+          ctx.beginPath();
+          ctx.arc(x * 20 + 300, y * 20 + 300, 6, 0, Math.PI * 2);
+          ctx.fillStyle = "lime";
+          ctx.fill();
+
+          // Label key points
+          ctx.fillStyle = "white";
+          ctx.font = "12px Arial";
+          ctx.fillText(
+            index === 0 ? "RC" : `KP${index}`,
+            x * 20 + 310,
+            y * 20 + 300
+          );
+        });
+
+        threats.forEach(([pos, vel], index) => {
+          const angularVelocity = 0.001;
+          const angle = Math.atan2(vel[1], vel[0]) + angularVelocity;
+          const speed = Math.sqrt(vel[0] ** 2 + vel[1] ** 2);
+          vel[0] = Math.cos(angle) * speed;
+          vel[1] = Math.sin(angle) * speed;
+
+          pos[0] += vel[0] * 0.03;
+          pos[1] += vel[1] * 0.03;
+
+          ctx.beginPath();
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.moveTo(pos[0] * 20 + 300, pos[1] * 20 + 300);
+
+          let futureX = pos[0];
+          let futureY = pos[1];
+          while (Math.abs(futureX * 20) < 300 && Math.abs(futureY * 20) < 300) {
+            futureX += vel[0];
+            futureY += vel[1];
+          }
+
+          ctx.lineTo(futureX * 20 + 300, futureY * 20 + 300);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.beginPath();
+          ctx.arc(pos[0] * 20 + 300, pos[1] * 20 + 300, 8, 0, Math.PI * 2);
+          ctx.fillStyle = "red";
+          ctx.fill();
+
+          ctx.fillStyle = "white";
+          ctx.font = "12px Arial";
+          ctx.fillText(`T${index + 1}`, pos[0] * 20 + 310, pos[1] * 20 + 300);
+        });
+      }
+
+      function addRandom(ev) {
+        const angle = Math.random() * Math.PI * 2;
+        const x = Math.cos(angle) * 15;
+        const y = Math.sin(angle) * 15;
+        const vx = -x * 0.05 + (Math.random() - 0.5) * 0.5;
+        const vy = -y * 0.05 + (Math.random() - 0.5) * 0.5;
+        threats.push([
+          [x, y],
+          [vx, vy],
+        ]);
+      }
+
+      function removeThreatsInsideRedCircle() {
+        threats = threats.filter(([pos]) => {
+          const distance = Math.sqrt(pos[0] * pos[0] + pos[1] * pos[1]) * 20;
+          return distance > 100;
+        });
+      }
+
+      function removeOutOfBoundsThreats() {
+        threats = threats.filter(([pos]) => {
+          const x = pos[0] * 20 + 300;
+          const y = pos[1] * 20 + 300;
+          return x >= 0 && x <= width && y >= 0 && y <= height;
+        });
+      }
+
+      let angle = 0;
+      function animateRadar() {
+        angle += 0.05;
+        removeThreatsInsideRedCircle();
+        removeOutOfBoundsThreats();
+        drawScene(angle);
+        requestAnimationFrame(animateRadar);
+      }
+
+      function updateThreatScore() {
+        fetch("http://127.0.0.1:5000/get_target", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targets: threats, key_points: keyPoints }),
+        })
+          .then((response) => response.json())
+          .then((result) => {
+            bestTargetIndex = result.best_target_index;
+            targetScores = result.scores;
+          })
+          .catch((error) => console.error("API Error:", error));
+      }
+
+      function updateThreatTable() {
+        const tableBody = document
+          .getElementById("threatTable")
+          .querySelector("tbody");
+        tableBody.innerHTML = "";
+
+        threats.forEach(([pos, vel], index) => {
+          const score = targetScores[index] || "N/A";
+          const row = document.createElement("tr");
+
+          row.innerHTML = `
+      <td>T${index + 1}</td>
+      <td>(${pos[0].toFixed(2)}, ${pos[1].toFixed(2)})</td>
+      <td>(${vel[0].toFixed(2)}, ${vel[1].toFixed(2)})</td>
+      <td>${score}</td>
+    `;
+
+          tableBody.appendChild(row);
+        });
+      }
+
+      function updateKeyPointTable() {
+        const tableBody = document
+          .getElementById("keypointTable")
+          .querySelector("tbody");
+        tableBody.innerHTML = "";
+
+        keyPoints.forEach(([x, y], index) => {
+          const name =
+            index === 0
+              ? "Radar Center"
+              : militaryPositions[(index - 1) % militaryPositions.length];
+          const row = document.createElement("tr");
+
+          row.innerHTML = `
+      <td>${index === 0 ? "RC" : `KP${index}`}</td>
+      <td>(${x.toFixed(2)}, ${y.toFixed(2)})</td>
+      <td>${name}</td>
+    `;
+
+          tableBody.appendChild(row);
+        });
+      }
+
+      let scoreGraphData = {
+        labels: [],
+        datasets: [],
+      };
+
+      const scoreGraphCtx = document
+        .getElementById("scoreGraph")
+        .getContext("2d");
+      const scoreGraph = new Chart(scoreGraphCtx, {
+        type: "line",
+        data: scoreGraphData,
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+            },
+          },
+          scales: {
+            x: {
+              title: {
+                display: true,
+                text: "Time (s)",
+              },
+            },
+            y: {
+              title: {
+                display: true,
+                text: "Threat Score",
+              },
+            },
+          },
+        },
+      });
+
+      let timeElapsed = 0;
+      function updateScoreGraph() {
+        timeElapsed += 0.25;
+        scoreGraphData.labels.push(timeElapsed.toFixed(2));
+
+        threats.forEach((_, index) => {
+          const score = targetScores[index] || 0;
+          if (!scoreGraphData.datasets[index]) {
+            scoreGraphData.datasets.push({
+              label: `T${index + 1}`,
+              data: [],
+              borderColor: `hsl(${index * 40}, 70%, 50%)`,
+              fill: false,
+            });
+          }
+          scoreGraphData.datasets[index].data.push(score);
+        });
+
+        scoreGraph.update();
+      }
+
+      setInterval(() => {
+        updateThreatScore();
+        updateThreatTable();
+        updateKeyPointTable();
+        updateScoreGraph();
+      }, 250);
+
+      animateRadar();
+
+      document.getElementById("threatForm").onsubmit = (e) => {
+        e.preventDefault();
+        const x = parseFloat(document.getElementById("threatX").value);
+        const y = parseFloat(document.getElementById("threatY").value);
+        const vx = parseFloat(document.getElementById("threatVX").value);
+        const vy = parseFloat(document.getElementById("threatVY").value);
+        threats.push([
+          [x, y],
+          [vx, vy],
+        ]);
+      };
+
+      document.getElementById("keypointForm").onsubmit = (e) => {
+        e.preventDefault();
+        const x = parseFloat(document.getElementById("kpX").value);
+        const y = parseFloat(document.getElementById("kpY").value);
+        keyPoints.push([x, y]);
+      };
+
+      function killBestThreat() {
+        if (bestTargetIndex >= 0 && bestTargetIndex < threats.length) {
+          threats.splice(bestTargetIndex, 1);
+          bestTargetIndex = -1;
+        }
+      }
+    </script>
+  </body>
+</html>
